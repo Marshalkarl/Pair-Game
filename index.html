@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jeu de paires</title>
+<style>
+:root{--bg:#f4f1ea;--card:#ffffff;--back:#2f5d50;--text:#1d2b27;--muted:#6b7a74;--accent:#e07a3f;--ok:#3a9d6b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15201d;--card:#22332e;--back:#3f7d6b;--text:#eef3f0;--muted:#9bb0a8;--accent:#f09a5f;--ok:#55c48a}}
+:root[data-theme="dark"]{--bg:#15201d;--card:#22332e;--back:#3f7d6b;--text:#eef3f0;--muted:#9bb0a8;--accent:#f09a5f;--ok:#55c48a}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px 14px}
+h1{font-size:1.6rem;margin:0 0 4px}
+.stats{display:flex;gap:18px;color:var(--muted);margin:8px 0 16px;font-size:.95rem;flex-wrap:wrap;justify-content:center}
+.stats b{color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(var(--cols,4),1fr);gap:8px;width:100%;max-width:var(--maxw,420px)}
+.levels{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px}
+.lv{background:var(--card);color:var(--text);border:2px solid var(--back);border-radius:999px;padding:8px 16px;font-size:.95rem;font-weight:600;cursor:pointer}
+.lv.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.card{aspect-ratio:1;perspective:600px;border:0;background:none;padding:0;cursor:pointer}
+.in{position:relative;width:100%;height:100%;transition:transform .4s;transform-style:preserve-3d}
+.card.open .in,.card.done .in{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;border-radius:12px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden;font-size:clamp(1.1rem,calc(36vw / var(--cols,4)),2.4rem)}
+.front{background:var(--back);color:#fff;font-size:1.4rem;opacity:.95}
+.back{background:var(--card);transform:rotateY(180deg);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.card.done .back{outline:3px solid var(--ok)}
+button.btn{margin-top:18px;background:var(--accent);color:#fff;border:0;border-radius:999px;padding:12px 26px;font-size:1rem;font-weight:600;cursor:pointer}
+#msg{min-height:1.6em;margin-top:14px;font-weight:600;color:var(--ok);text-align:center}
+</style>
+</head>
+<body>
+<h1>Jeu de paires</h1>
+<div class="levels" id="levels">
+  <button class="lv" data-l="facile">Facile</button>
+  <button class="lv" data-l="moyen">Moyen</button>
+  <button class="lv" data-l="difficile">Difficile</button>
+  <button class="lv" data-l="extreme">Extrême</button>
+</div>
+<div class="stats">
+  <span>Coups : <b id="moves">0</b></span>
+  <span>Temps : <b id="time">0</b> s</span>
+  <span>Record : <b id="best">–</b></span>
+</div>
+<div class="grid" id="grid"></div>
+<div id="msg"></div>
+<button class="btn" id="restart">Nouvelle partie</button>
+<script>
+var ALL=["🍎","🚀","🎧","🌵","🦊","⚽","🎲","🌙","🍕","🐙","🎸","🔥","🌈","🍩","🐼","⚡","🎯","🍉"];
+var LEVELS={facile:{pairs:6,cols:4,maxw:"360px"},moyen:{pairs:8,cols:4,maxw:"420px"},difficile:{pairs:12,cols:6,maxw:"520px"},extreme:{pairs:18,cols:6,maxw:"560px"}};
+var level="moyen",EMOJIS=[];
+var grid=document.getElementById("grid"),movesEl=document.getElementById("moves"),timeEl=document.getElementById("time"),bestEl=document.getElementById("best"),msg=document.getElementById("msg");
+var first=null,lock=false,moves=0,found=0,timer=null,seconds=0;
+
+function getBest(){try{return parseInt(localStorage.getItem("paires-best-"+level),10)||null}catch(e){return null}}
+function setBest(v){try{localStorage.setItem("paires-best-"+level,String(v))}catch(e){}}
+function showBest(){var b=getBest();bestEl.textContent=b?b+" coups":"–"}
+
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+function start(){
+  clearInterval(timer);timer=null;seconds=0;moves=0;found=0;first=null;lock=false;
+  var L=LEVELS[level];EMOJIS=ALL.slice(0,L.pairs);
+  grid.style.setProperty("--cols",L.cols);grid.style.setProperty("--maxw",L.maxw);
+  document.querySelectorAll(".lv").forEach(function(b){b.classList.toggle("on",b.dataset.l===level)});
+  movesEl.textContent=0;timeEl.textContent=0;msg.textContent="";showBest();
+  grid.innerHTML="";
+  shuffle(EMOJIS.concat(EMOJIS)).forEach(function(e){
+    var c=document.createElement("button");
+    c.className="card";c.setAttribute("aria-label","Carte cachée");c.dataset.e=e;
+    c.innerHTML='<div class="in"><div class="face front">?</div><div class="face back">'+e+'</div></div>';
+    c.addEventListener("click",function(){flip(c)});
+    grid.appendChild(c);
+  });
+}
+
+function flip(c){
+  if(lock||c===first||c.classList.contains("done")||c.classList.contains("open"))return;
+  if(!timer){timer=setInterval(function(){seconds++;timeEl.textContent=seconds},1000)}
+  c.classList.add("open");
+  if(!first){first=c;return}
+  moves++;movesEl.textContent=moves;
+  if(first.dataset.e===c.dataset.e){
+    first.classList.replace("open","done");c.classList.replace("open","done");
+    first=null;found++;
+    if(found===EMOJIS.length)win();
+  }else{
+    lock=true;var a=first;first=null;
+    setTimeout(function(){a.classList.remove("open");c.classList.remove("open");lock=false},800);
+  }
+}
+
+function win(){
+  clearInterval(timer);timer=null;
+  var b=getBest();
+  if(!b||moves<b){setBest(moves);showBest();msg.textContent="Bravo ! Nouveau record : "+moves+" coups en "+seconds+" s 🎉"}
+  else{msg.textContent="Bravo ! "+moves+" coups en "+seconds+" s."}
+}
+
+document.querySelectorAll(".lv").forEach(function(b){b.addEventListener("click",function(){level=b.dataset.l;start()})});
+document.getElementById("restart").addEventListener("click",start);
+start();
+</script>
+</body>
+</html>
